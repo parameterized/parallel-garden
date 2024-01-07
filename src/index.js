@@ -1,7 +1,8 @@
 "use strict";
 
-const canvas = document.getElementById("main-canvas");
-const glsl = SwissGL(canvas);
+const mainCanvasContainer = document.getElementById("mainCanvasContainer");
+const mainCanvas = document.getElementById("mainCanvas");
+const glsl = SwissGL(mainCanvas);
 const initSeed = Math.random() * 12417;
 const FPS = 30;
 const gridSize = [64, 64];
@@ -26,7 +27,13 @@ const fade = glsl({}, {
 
 // Sim FP is set on file read
 let simParams = {};
-const shiftParams = { FP: "Src((I + ivec2(1, 0)) % Src_size())" };
+// const shiftParams = { FP: "Src((I + ivec2(1, 0)) % Src_size())" };
+const shiftParams = {
+    FP: `
+ivec2 sz = Src_size();
+FOut = Src((I - ivec2(1, 0) + sz) % sz);
+`
+};
 const trailParams = {
     S: state[0],
     Blend: "d * sa + s",
@@ -48,14 +55,16 @@ FOut = vec4(color, 1);
 };
 
 
-async function start() {
+async function start(restart = false) {
     glsl({
         seed: initSeed,
         FP: "hash(ivec3(I, seed)).r"
     }, state);
 
-    simParams.FP = await loadShader("src/shaders/gol.frag");
-    requestAnimationFrame(step);
+    if (!restart) {
+        simParams.FP = await loadShader("src/shaders/gol.frag");
+        requestAnimationFrame(step);
+    }
 }
 
 start();
@@ -71,13 +80,17 @@ function step() {
     if (playing) {
         // Simulation
         simTime += 1 / FPS;
-        glsl(simParams, state);
+        if (codeSteps.sim.active) {
+            glsl(simParams, state);
+        } else {
+            glsl({ FP: "Src(I)" }, state);
+        }
         glsl(shiftParams, state);
         glsl(trailParams, fade);
     }
 
     // Drawing
-    drawParams.time = simTime + simTimeOffset;
+    drawParams.time = simTime - simTimeOffset;
     glsl(drawParams);
 
     // TODO: account for sim time
@@ -97,6 +110,9 @@ function togglePlaying() {
 }
 
 togglePlayingButton.addEventListener("mousedown", togglePlaying);
+
+const resetButton = document.getElementById("resetButton");
+resetButton.addEventListener("mousedown", start);
 
 const timeSlider = document.getElementById("timeSlider");
 
